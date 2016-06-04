@@ -1,0 +1,378 @@
+---
+title: "Assignment 3 - Data Management and Programming for Epidemiology 401179"
+author: "Kevin Zhu"
+date: "2/06/2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+Assignment 3 involves manipulating some large, real-life data files. These files contain publicly-available data on adverse drug reactions compiled by the US FDA (Food and Drug Administration). Four data files will be used, containing data submitted to the FDA in the 1st quarter of 2014. The four files can be found in the Assignment 3 directory on the course web site on vUWS. You should create a new RStudio project for the assignment, and unzip the data files in the project directory so they are accessible to the project.
+
+Information on the content of each of the data files can be found on the following web pages:
+
+ * Demographics: http://www.nber.org/fda/faers/2014/desc/demo2014q1/desc.txt
+ * Drug information http://www.nber.org/fda/faers/2014/desc/drug2014q1/desc.txt
+ * Adverse reaction description http://www.nber.org/fda/faers/2014/desc/reac2014q1/desc.txt
+ * Outcomes http://www.nber.org/fda/faers/2014/desc/outc2014q1/desc.txt
+
+Your solution needs to be submitted as an Rmd (R Markdown) file which will be used to create an HTML (web) document combining the descriptions of the assignment tasks with your R code solutions, and the output created by that R code.
+
+All data manipulation and table and chart preparation must be done by R code contained in your solution file. Do not manipulate data using other means - marks will be deducted if you do. The goal is to create a 100% reproducible analysis.
+
+Use this Rmd file as a template for your solution (feel free to add relevant text or commentary). You do not need to submit copies of the data files - the lecturers have copies of those. Your solution will be marked by running your Rmd solution file using knitr in RStudio. Submit it as a file named Assignment3_solution_name1_name2_name3.Rmd, where name1, name2 and name3 are the surnames of the students collaborating that that solution file. Up to three students may collaborate on one solution. Thus your solution should only rely on the the four data files supplied. You may use any additional R packages or libraries which you like - the lecturers will install these additional packages on their own system as required in order to run and thus mark your solution. The use of the dplyr and ggplot2 packages is recommended.
+
+Task a. in Section 1 below has been done for you to show you how to include your R code in this file. You may use any additional knitr directives or options that you wish, but please leave the value of echo at the default of TRUE so that your code is visible in the output HTML documemt.
+
+# Due Date
+
+Midnight 5th June 2016.
+
+# Statement of contributions
+
+Kevin Zhu - everything
+
+# Section 1
+
+## Value
+
+7 marks
+
+## Tasks
+
+a. Read the demographics file for qtr1 2014 into a data frame in R, but do not automatically convert strings to factors
+
+```{r}
+Demographics <- read.csv('demo2014q1.csv', stringsAsFactors = FALSE)
+```
+
+b. Convert the i_f_code column into a factor with appropriate labels.
+
+```{r}
+Demographics$i_f_code <- factor(Demographics$i_f_code, levels = c("F", "I"), labels = c("Follow-up", "Initial"))
+```
+
+c. Convert the event_dt variable into a date variable using as.Date() and name the new column event_date. 
+
+```{r}
+Demographics$event_dt_factor <- factor(Demographics$event_dt)
+Demographics$event_date <- as.Date(Demographics$event_dt_factor, "%Y%m%d")
+```
+
+d. Write a function to create a numeric age_yrs column in the demography data frame which has age in years. Create a column called agr_grp which contains the 5 year age group, from 0-4 through to 85+, for each record
+
+```{r}
+# For this solution, dplyr package needs to be installed
+library("dplyr", lib.loc="~/R/win-library/3.2")
+
+#Decade age converted
+Decade_age <- Demographics %>%
+filter(age > 0, age_cod == "DEC") %>%
+mutate(decade_age_converted = age*10)
+Demographics <- merge(Demographics, Decade_age,
+all.x=TRUE)
+
+#Month age converted
+Month_age <- Demographics %>%
+filter(age > 0, age_cod == "MON") %>%
+mutate(month_age_converted = age/12)
+Demographics <- merge(Demographics, Month_age,
+all.x=TRUE)
+
+#Week age converted
+Week_age <- Demographics %>%
+filter(age > 0, age_cod == "WK") %>%
+mutate(week_age_converted = age/52)
+Demographics <- merge(Demographics, Week_age,
+all.x=TRUE)
+
+#Day age converted
+Day_age <- Demographics %>% 
+filter(age > 0, age_cod == "DY") %>%
+mutate(day_age_converted = age/365)
+Demographics <- merge(Demographics, Day_age, all.x=TRUE)
+
+#Hour age converted
+Hour_age <- Demographics %>%
+filter(age > 0, age_cod == "HR") %>%
+mutate(hour_age_converted = age/8760)
+Demographics <- merge(Demographics, Hour_age,
+all.x=TRUE)
+
+#Normal years
+Year_age <- Demographics %>%
+filter(age > 0, age_cod == "YR") %>%
+mutate(year_age_converted = age)
+Demographics <- merge(Demographics, Year_age, all.x=TRUE)
+
+#Adding everything into one column
+Demographics$age_yrs <- rowSums(Demographics[,c("decade_age_converted", "year_age_converted", "month_age_converted", "week_age_converted", "day_age_converted", "hour_age_converted")], na.rm = TRUE)
+
+#Making ages into groups
+Demographics$age_grp <- cut(Demographics$age_yrs,breaks=c(0,5,11,16,21,26, 31, 36, 41, 46, 51, 56, 61, 66, 71, 76, 81, 85, Inf),labels=c("0 to 4 yrs","5 to 10 yrs","11 to 15 yrs","16 to 20 yrs","21 to 25 yrs","26 to 30 yrs", "31 to 35 yrs", "36 to 40 yrs", "41 yrs to 45 yrs", "46 to 50 yrs", "51 to 55 yrs", "56 to 60 yrs", "61 to 65 yrs", "66 to 70 yrs", "71 to 75 yrs", "76 to 80 yrs", "81 to 84 yrs", "85+ yrs"), right=FALSE)
+```
+
+e. Convert sex to a factor with appropriate labels
+
+```{r}
+Demographics$sex <- factor(Demographics$sex, levels = c("UNK", "M", "F", "NS"), labels = c("Unknown", "Male", "Female", "Not Specified"))
+```
+
+f. Convert the wtstr colum to a numeric weight in kilograms and store in a column called weight
+
+```{r}
+
+#Need to convert the strings into numeric. NAs will be introduced
+Demographics$weight_as_numeric <- as.numeric(Demographics$wtstr)
+
+#Now for the calculations
+Pound_to_kg <- Demographics %>%
+mutate(pound_to_kg = weight_as_numeric * 0.453592) %>%
+filter(weight_as_numeric > 0, wt_cod == "LBS") 
+Demographics <- merge(Demographics, Pound_to_kg,
+all.x=TRUE)
+
+Gram_to_kg <- Demographics %>%
+mutate(gram_to_kg = weight_as_numeric * 100) %>%
+filter(weight_as_numeric > 0, wt_cod == "GMS") 
+Demographics <- merge(Demographics, Gram_to_kg,
+all.x=TRUE)
+
+Kg_to_kg <- Demographics %>%
+mutate(kg_to_kg = weight_as_numeric) %>%
+filter(weight_as_numeric >0, wt_cod == "KG")
+Demographics <- merge(Demographics, Kg_to_kg,
+all.x=TRUE)
+
+#Into a column called weight
+
+Demographics$weight <- rowSums(Demographics[,c("kg_to_kg", "gram_to_kg", "pound_to_kg")], na.rm = TRUE)
+
+```
+
+g. Convert occp_code to a factor and store as a column named occupation
+
+```{r}
+Occupation_code_factor <- factor(Demographics$occp_cod)
+Demographics$occupation <- Occupation_code_factor
+
+```
+
+h. Remove all columns except the following from the demographics data frame:
+ * primaryid
+ * caseid
+ * caseversion
+ * i_f_code
+ * event_date
+ * age_yrs
+ * age_grp
+ * sex
+ * weight
+ * occupation
+
+```{r}
+keep <- c("primaryid", "caseid", "caseversion", "i_f_code", "event_date", "age_yrs", "age_grp", "sex", "weight", "occupation")
+Demographics <- Demographics[ , keep, drop = FALSE]
+```
+
+i. keep only the initial report for each case in the demographics data frame
+
+```{r}
+No_initial_report <- filter(Demographics, i_f_code != "I")
+Demographics <- anti_join(Demographics, No_initial_report, by = "i_f_code")
+
+```
+
+j. demonstrate that all of the above steps in Section 1 have been executed correctly.
+
+# Section 2
+
+## Value
+
+6 marks
+
+## Tasks
+
+a. read the drug2014q1.csv data file into a data frame, do not convert strings into factor automatically
+
+```{r}
+Drug <- read.csv('drug2014q1.csv', stringsAsFactors = FALSE)
+```
+
+b. convert the role_cod column to a factor with appropriate labels:
+
+```{r}
+Drug$role_cod <- factor(Drug$role_cod, levels = c("PS", "SS", "C", "I"), labels = c("Primary suspect drug", "Secondary suspect drug", "Concomitant", "Interacting"))
+```
+
+c. convert the route column to a factor to save space
+
+```{r}
+Drug$route <- factor(Drug$route)
+```
+
+d. convert the dechal column to a factor with appropriate labels
+
+```{r}
+Drug$dechal <- factor(Drug$dechal, levels = c("Y", "N", "U", "D"), labels = c("Positive dechallenge", "Negative dechallenge", "Unknown", "Does Not Apply"))
+```
+
+e. convert the rechal column to a factor with appropriate labels
+
+```{r}
+Drug$rechal <- factor(Drug$rechal, levels = c("Y", "N", "U", "D"), labels = c("Positive dechallenge", "Negative dechallenge", "Unknown", "Does Not Apply"))
+```
+
+f. Remove all columns except the following from the drugs data frame:
+ * primaryid
+ * caseid
+ * drug_seq
+ * role_cod
+ * drugname
+ * route
+ * dechal
+ * rechal
+
+```{r}
+keep_drug <- c("primaryid", "caseid", "drug_seq", "role_cod", "drugname", "route", "dechal", "rechal")
+Drug <- Drug[ , keep_drug, drop = FALSE]
+```
+
+g. demonstrate that all of the above steps in Section 2 have been executed correctly.
+
+# Section 3
+
+## Value
+
+2 marks
+
+## Tasks
+
+a. read the outc2014q1.csv data file into a data frame, do not convert strings into factor automatically
+
+```{r}
+Outcome <- read.csv('outc2014q1.csv', stringsAsFactors = FALSE)
+```
+
+b. convert the outc_code column to a factor with appropriate labels
+
+```{r}
+Outcome$outc_cod <- factor(Outcome$outc_cod, levels = c("DE", "LT", "HO","DS", "CA", "RI", "OT"), labels = c("Death", "Life-Threatening", "Hospitalisation Initial or Prolonged", "Disability", "Congenital Anomaly", "Required Intervention to prevent", "Other Serious Important Medical Event"))
+```
+
+# Section 4
+
+## Value
+
+2 marks
+
+## Tasks
+
+a. read the reac2014q1.csv data file into a data frame, convert strings into factor automatically
+
+```{r}
+Reaction <- read.csv('reac2014q1.csv', stringsAsFactors = TRUE)
+```
+
+b. calculate the total size in memory of the four data frames: demographics, drugs, outcomes, reactions
+
+Hint: use the object.size() function
+
+```{r}
+Demographic_size <- object.size(Demographics)
+Drug_size <- object.size(Drug)
+Reaction_size <- object.size(Reaction)
+Outcome_size <- object.size(Outcome)
+Total_size <- Demographic_size + Drug_size + Reaction_size + Outcome_size
+Total_size
+```
+
+# Section 5
+
+## Value
+
+6 marks
+
+## Task
+
+Present tables which show the number of missing values in each variable in each of the 4 data frames.
+
+```{r}
+#Demographics table
+sapply(Demographics, function(x) sum(is.na(x)))
+#Drug table
+sapply(Drug, function(x) sum(is.na(x)))
+#Reaction table
+sapply(Reaction, function(x) sum(is.na(x)))
+#Outcome table
+sapply(Outcome, function(x) sum(is.na(x)))
+
+```
+
+# Section 6
+
+## Value
+
+6 marks
+
+## Task
+
+Find the 10 drugs (drug names) which most commonly cause adverse events, and create a table and a chart to show the age group distribution of people suffering adverse events caused by those drugs. Plot with and without missing age group. Use a different y-axis range for each drug. 
+
+```{r}
+#We'll be looking at the frequency of drugnames to see the top 10 which are most frequently mentioned. First need to lower to lowercase to find as many common terms and trim the whitespace
+Drug$drugname <- tolower(Drug$drugname)
+Drug$drugname <- trimws(Drug$drugname)
+#Then we list the top 10 recurring drug names. 
+count(Drug, drugname, sort = TRUE)
+#Top 10 is humira, letairis, enbrel, tecifidera, dianeal low calcium, methotrexate, avonex, prednisone, lipitor, and tysabir.
+test <- filter(Drug, drugname == "humira" | drugname == "letairis" | drugname == "enbrel" | drugname == "tecifidera" | drugname == "dianeal low calcium" | drugname == "methotrexate" | drugname == "avonex" | drugname == "prednisone" | drugname == "lipitor" | drugname == "tysabir")
+
+```
+
+# Section 7
+
+## Value
+
+6 marks
+
+## Task
+
+For each of the top 10 drugs, show the relative frequency of each type of outcome, in a table and in a chart. Draw a chart showing the missing category for outcome, and a second chart with the missing category excluded.
+
+```{r}
+# your solution code here
+```
+
+# Section 8
+
+## Value
+
+6 marks
+
+## Task
+
+Find the 10 most common types of drug reaction, and using a function which you have written, for each type of reaction, present a table of the (up to) ten most common drugs that cause that type of reaction (show their frequencies as well).
+
+```{r}
+# your solution code here
+```
+
+# Section 9
+
+## Value
+
+9 marks
+
+## Task
+
+Present some interesting or informative aspect of the data that involves data items from more than one of the four data frames, in the form of at least one table and one chart (but no more than 6 tables and/or charts in total). Each group must present a different analysis for this section - marks will be deducted from all groups that present the same analysis as any other group. You will need to confer amongst groups to ensure there is no overlap. The lecturers are happy to advise via email on whether any proposed analyses are too similar, or to suggest some suitable analyses.
+
+```{r}
+# your solution code here
+```
+
