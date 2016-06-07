@@ -1,8 +1,8 @@
 ---
 title: "Assignment 3 - Data Management and Programming for Epidemiology 401179"
-author: "Kevin Zhu"
-date: "2/06/2016"
-output: html_document
+date: "7/06/2016"
+output: pdf_document
+authors: Kevin Zhu, Henry Tangi, Pronati Das
 ---
 
 ```{r setup, include=FALSE}
@@ -182,7 +182,7 @@ Demographics <- Demographics[ , keep, drop = FALSE]
 i. keep only the initial report for each case in the demographics data frame
 
 ```{r}
-No_initial_report <- filter(Demographics, i_f_code != "I")
+No_initial_report <- filter(Demographics, i_f_code != "Initial")
 Demographics <- anti_join(Demographics, No_initial_report, by = "i_f_code")
 
 ```
@@ -283,10 +283,12 @@ b. calculate the total size in memory of the four data frames: demographics, dru
 Hint: use the object.size() function
 
 ```{r}
+#First, individually calculate the sizes of each of the data frames.
 Demographic_size <- object.size(Demographics)
 Drug_size <- object.size(Drug)
 Reaction_size <- object.size(Reaction)
 Outcome_size <- object.size(Outcome)
+#Then combine them to find the total size in bytes.
 Total_size <- Demographic_size + Drug_size + Reaction_size + Outcome_size
 Total_size
 ```
@@ -302,15 +304,14 @@ Total_size
 Present tables which show the number of missing values in each variable in each of the 4 data frames.
 
 ```{r}
-#Demographics table
+#Demographics table total missing in a table
 sapply(Demographics, function(x) sum(is.na(x)))
-#Drug table
+#Drug table total missing in a table
 sapply(Drug, function(x) sum(is.na(x)))
-#Reaction table
+#Reaction table total missing in a table
 sapply(Reaction, function(x) sum(is.na(x)))
-#Outcome table
+#Outcome table total missing in a table
 sapply(Outcome, function(x) sum(is.na(x)))
-
 ```
 
 # Section 6
@@ -324,13 +325,33 @@ sapply(Outcome, function(x) sum(is.na(x)))
 Find the 10 drugs (drug names) which most commonly cause adverse events, and create a table and a chart to show the age group distribution of people suffering adverse events caused by those drugs. Plot with and without missing age group. Use a different y-axis range for each drug. 
 
 ```{r}
-#We'll be looking at the frequency of drugnames to see the top 10 which are most frequently mentioned. First need to lower to lowercase to find as many common terms and trim the whitespace
+#Need to make sure ggplot2 is active
+library(ggplot2)
+#Make everything in drugname lowercase and trimws
 Drug$drugname <- tolower(Drug$drugname)
 Drug$drugname <- trimws(Drug$drugname)
-#Then we list the top 10 recurring drug names. 
-count(Drug, drugname, sort = TRUE)
-#Top 10 is humira, letairis, enbrel, tecifidera, dianeal low calcium, methotrexate, avonex, prednisone, lipitor, and tysabir.
-test <- filter(Drug, drugname == "humira" | drugname == "letairis" | drugname == "enbrel" | drugname == "tecifidera" | drugname == "dianeal low calcium" | drugname == "methotrexate" | drugname == "avonex" | drugname == "prednisone" | drugname == "lipitor" | drugname == "tysabir")
+#Create a new dataframe with Drug and Demographics in it. We will lose some data which isn't attached to any Primary or Case IDs.
+Demographics_drug <- left_join(Demographics, Drug)
+#Now to find the top 10 drug names
+Drug_frequency <-  Demographics_drug %>% group_by(drugname) %>% summarise(n=n()) %>% arrange(desc(n))
+Top_10_drugs <- Drug_frequency[1:10,]$drugname
+Top_10_drugs
+#Frequencies of top 10 drugs
+Top_10_frequency <- Demographics_drug %>% filter(drugname %in% Top_10_drugs) 
+sort(table(Top_10_frequency$drugname), decreasing = T)
+
+#The plot with labels with missing age groups
+ggplot(Top_10_frequency, aes(x=Top_10_frequency$age_grp)) + geom_bar(width=.5) + facet_grid(drugname ~. , scales="free") + labs(title="Top 10 adverse reactions from drugs distributed with missing age groups", x="Age Groups", y="Frequency of adverse reactions")
+
+#The plot with labels without missing age groups
+
+Demographics_drug_frequency_no_missing <- select(Demographics_drug, drugname, age_grp) %>% 
+                                      filter(!is.na(age_grp))
+Demographics_drug_frequency_no_missing$age_grp <- as.character(Demographics_drug_frequency_no_missing$age_grp)
+
+ggplot(Demographics_drug_frequency_no_missing, aes(x=Demographics_drug_frequency_no_missing$age_grp)) + geom_bar(width=.5) + facet_grid(drugname ~. , scales="free") + labs(title="Top 10 adverse reactions from drugs distributed without missing age", x="Age Groups", y="Frequency of adverse reactions") 
+
+                    
 
 ```
 
@@ -345,7 +366,31 @@ test <- filter(Drug, drugname == "humira" | drugname == "letairis" | drugname ==
 For each of the top 10 drugs, show the relative frequency of each type of outcome, in a table and in a chart. Draw a chart showing the missing category for outcome, and a second chart with the missing category excluded.
 
 ```{r}
-# your solution code here
+#First, find the total frequency of drugs and their outcomes.
+Drug_outcome <- left_join(Top_10_frequency, Outcome, by="primaryid")
+Drug_outcome_frequency <- select(Drug_outcome, outc_cod, drugname)
+table(Drug_outcome_frequency)
+#Introduce drug outcome frequencies without NA's now. Only looking at complete cases.
+Total_complete_rows <- sum(complete.cases(Drug_outcome_frequency))
+#We can calculate our relative frequencies now.
+Relative_frequency <- table(Drug_outcome_frequency) / (Total_complete_rows)
+Relative_frequency
+                             
+#Our relative frequency in a graph 
+Relative_frequency_dataframe <- data.frame(Relative_frequency)
+
+ggplot(Relative_frequency_dataframe, aes(x=Relative_frequency_dataframe$drugname, y=Relative_frequency_dataframe$Freq)) + geom_bar(stat="identity") + facet_grid(outc_cod ~ ., scales = "free") + labs(title="Relative frequency of outcomes with the top 10 adverse drugs", x="Drug Name", y="Relative Frequency")
+
+#Graph for missing category in outcome
+
+ggplot(Drug_outcome_frequency, aes(x=Drug_outcome_frequency$outc_cod)) + geom_bar() + facet_grid(drugname ~ ., scales = "free") + labs(title="Total number of outcomes in drugs with missing values", x="Outcome", y="Number of cases")
+
+#Graph with the missing category excluded
+
+Drug_outcome_frequency_no_missing <- select(Drug_outcome_frequency, drugname, outc_cod) %>% 
+                                      filter(!is.na(outc_cod))
+
+ggplot(Drug_outcome_frequency_no_missing, aes(x=Drug_outcome_frequency_no_missing$outc_cod)) + geom_bar() + facet_grid(drugname ~ ., scales = "free") + labs(title="Total number of outcomes in drugs excluding missing values", x="Outcome", y="Number of cases")
 ```
 
 # Section 8
@@ -359,7 +404,34 @@ For each of the top 10 drugs, show the relative frequency of each type of outcom
 Find the 10 most common types of drug reaction, and using a function which you have written, for each type of reaction, present a table of the (up to) ten most common drugs that cause that type of reaction (show their frequencies as well).
 
 ```{r}
-# your solution code here
+#Make everything in reaction is placed into lowercase and trimws'd to help group similar variables
+Reaction$pt <- tolower(Reaction$pt)
+Reaction$pt <- trimws(Reaction$pt)
+#Then create a merged dataframe for Drug and Reaction
+Drug_reaction <- left_join(Drug, Reaction)
+#Now to find the most frequent drug reactions. This will be using the similar function from Q6
+Reaction_list <- Drug_reaction %>% group_by(pt) %>% summarise(n = n()) %>% arrange(desc(n))
+Top_10_drug_reaction<- Reaction_list[1:10,]$pt
+Top_10_drug_reaction
+
+Top_10_reaction_drug <- function(this_pt) {
+     top10rxn <- Drug_reaction %>% filter(pt == this_pt) %>% group_by(drugname) %>% summarise(n = n()) %>% arrange(desc(n))
+     return(top10rxn[1:10,])
+}
+
+library(knitr)
+kable(Top_10_reaction_drug("drug ineffective"))
+kable(Top_10_reaction_drug("injection site pain"))
+kable(Top_10_reaction_drug("fatigue"))
+kable(Top_10_reaction_drug("nausea"))
+kable(Top_10_reaction_drug("pain"))
+kable(Top_10_reaction_drug("diarrhoea"))
+kable(Top_10_reaction_drug("headache"))
+kable(Top_10_reaction_drug("vomiting"))
+kable(Top_10_reaction_drug("dyspnoea"))
+kable(Top_10_reaction_drug("arthralgia"))
+
+
 ```
 
 # Section 9
@@ -373,6 +445,20 @@ Find the 10 most common types of drug reaction, and using a function which you h
 Present some interesting or informative aspect of the data that involves data items from more than one of the four data frames, in the form of at least one table and one chart (but no more than 6 tables and/or charts in total). Each group must present a different analysis for this section - marks will be deducted from all groups that present the same analysis as any other group. You will need to confer amongst groups to ensure there is no overlap. The lecturers are happy to advise via email on whether any proposed analyses are too similar, or to suggest some suitable analyses.
 
 ```{r}
-# your solution code here
+#We will want to look at the frequency of the top 10 drugs that had adverse effects and see whether or not there is a difference in effect within gender. 
+#We will use our Demographics_drug dataframe as it has the data we need, and attempt to build cross-frequency tables to see if there is a correlation. 
+
+#Frequencies table for gender and top 10 adverse effect drugs
+Frequency_table <- table(Top_10_frequency$sex, Top_10_frequency$drugname)
+
+#Plotting a graph to see our results
+ggplot(Top_10_frequency, aes(x=Top_10_frequency$sex)) + geom_bar() + facet_grid(drugname ~ ., scales = "free") + labs(title="Gender and top 10 adverse effect drugs", x="Gender", y="Number of cases")
+
+#Although we have a lot of missing genders, it seems that the female proportion is quite high. We should look whether or not there is a correlation between being of female sex and having adverse results.
+Female_demographic <- filter(Top_10_frequency, sex == "Female)
+
+                            
+
+
 ```
 
